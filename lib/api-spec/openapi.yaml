@@ -1,15 +1,24 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Guardian Angel API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: gemini
+    description: Gemini AI chat operations
+  - name: users
+    description: User profile operations
+  - name: guardians
+    description: Guardian contacts
+  - name: mood
+    description: Mood logging
+  - name: buddy
+    description: Buddy/sponsor system
 paths:
   /healthz:
     get:
@@ -24,6 +33,276 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /users/profile:
+    get:
+      operationId: getUserProfile
+      tags: [users]
+      summary: Get user profile
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    post:
+      operationId: upsertUserProfile
+      tags: [users]
+      summary: Create or update user profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertUserProfileBody"
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+  /guardians:
+    get:
+      operationId: listGuardians
+      tags: [guardians]
+      summary: List guardian contacts
+      responses:
+        "200":
+          description: List of guardians
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Guardian"
+    post:
+      operationId: createGuardian
+      tags: [guardians]
+      summary: Add a guardian contact
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGuardianBody"
+      responses:
+        "201":
+          description: Created guardian
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Guardian"
+  /guardians/{id}:
+    delete:
+      operationId: deleteGuardian
+      tags: [guardians]
+      summary: Remove a guardian
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+  /mood:
+    get:
+      operationId: listMoodLogs
+      tags: [mood]
+      summary: List mood logs
+      parameters:
+        - name: days
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 30
+      responses:
+        "200":
+          description: Mood logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MoodLog"
+    post:
+      operationId: createMoodLog
+      tags: [mood]
+      summary: Log a mood entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMoodLogBody"
+      responses:
+        "201":
+          description: Created mood log
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MoodLog"
+  /buddy/connection:
+    get:
+      operationId: getBuddyConnection
+      tags: [buddy]
+      summary: Get buddy connection info
+      responses:
+        "200":
+          description: Buddy connection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BuddyConnection"
+        "404":
+          description: No connection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    post:
+      operationId: createBuddyConnection
+      tags: [buddy]
+      summary: Connect with a sponsor via code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBuddyConnectionBody"
+      responses:
+        "200":
+          description: Connection created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BuddyConnection"
+  /gemini/conversations:
+    get:
+      operationId: listGeminiConversations
+      tags: [gemini]
+      summary: List all conversations
+      responses:
+        "200":
+          description: List of conversations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GeminiConversation"
+    post:
+      operationId: createGeminiConversation
+      tags: [gemini]
+      summary: Create a new conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGeminiConversationBody"
+      responses:
+        "201":
+          description: Created conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeminiConversation"
+  /gemini/conversations/{id}:
+    get:
+      operationId: getGeminiConversation
+      tags: [gemini]
+      summary: Get conversation with messages
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Conversation with messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeminiConversationWithMessages"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeminiError"
+    delete:
+      operationId: deleteGeminiConversation
+      tags: [gemini]
+      summary: Delete a conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeminiError"
+  /gemini/conversations/{id}/messages:
+    get:
+      operationId: listGeminiMessages
+      tags: [gemini]
+      summary: List messages in a conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GeminiMessage"
+    post:
+      operationId: sendGeminiMessage
+      tags: [gemini]
+      summary: Send a message and get a streaming response
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendGeminiMessageBody"
+      responses:
+        "200":
+          description: Streaming SSE response
+          content:
+            text/event-stream:
+              schema:
+                type: string
 components:
   schemas:
     HealthStatus:
@@ -33,4 +312,242 @@ components:
           type: string
       required:
         - status
-
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        sobrietyStart:
+          type: string
+          format: date-time
+        addictionType:
+          type: string
+          nullable: true
+        dailySpend:
+          type: number
+          nullable: true
+        checkInTime:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - sobrietyStart
+        - createdAt
+    UpsertUserProfileBody:
+      type: object
+      properties:
+        name:
+          type: string
+        sobrietyStart:
+          type: string
+          format: date-time
+        addictionType:
+          type: string
+          nullable: true
+        dailySpend:
+          type: number
+          nullable: true
+        checkInTime:
+          type: string
+          nullable: true
+      required:
+        - name
+        - sobrietyStart
+    Guardian:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        name:
+          type: string
+        phone:
+          type: string
+        relationship:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - userId
+        - name
+        - phone
+        - createdAt
+    CreateGuardianBody:
+      type: object
+      properties:
+        userId:
+          type: integer
+        name:
+          type: string
+        phone:
+          type: string
+        relationship:
+          type: string
+          nullable: true
+      required:
+        - userId
+        - name
+        - phone
+    MoodLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        moodScore:
+          type: integer
+        note:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - userId
+        - moodScore
+        - createdAt
+    CreateMoodLogBody:
+      type: object
+      properties:
+        userId:
+          type: integer
+        moodScore:
+          type: integer
+        note:
+          type: string
+          nullable: true
+      required:
+        - userId
+        - moodScore
+    BuddyConnection:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        sponsorId:
+          type: integer
+          nullable: true
+        code:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - userId
+        - code
+        - createdAt
+    CreateBuddyConnectionBody:
+      type: object
+      properties:
+        userId:
+          type: integer
+        code:
+          type: string
+      required:
+        - userId
+        - code
+    GeminiConversation:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - title
+        - createdAt
+        - updatedAt
+    GeminiConversationWithMessages:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/GeminiMessage"
+      required:
+        - id
+        - title
+        - createdAt
+        - updatedAt
+        - messages
+    GeminiMessage:
+      type: object
+      properties:
+        id:
+          type: integer
+        conversationId:
+          type: integer
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - conversationId
+        - role
+        - content
+        - createdAt
+    CreateGeminiConversationBody:
+      type: object
+      properties:
+        title:
+          type: string
+      required:
+        - title
+    SendGeminiMessageBody:
+      type: object
+      properties:
+        content:
+          type: string
+      required:
+        - content
+    GeminiError:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error

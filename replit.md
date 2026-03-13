@@ -94,3 +94,36 @@ Generated React Query hooks and fetch client from the OpenAPI spec (e.g. `useHea
 ### `scripts` (`@workspace/scripts`)
 
 Utility scripts package. Each script is a `.ts` file in `src/` with a corresponding npm script in `package.json`. Run scripts via `pnpm --filter @workspace/scripts run <script>`. Scripts can import any workspace package (e.g., `@workspace/db`) by adding it as a dependency in `scripts/package.json`.
+
+### `artifacts/guardian-angel` (`@workspace/guardian-angel`)
+
+Polish sobriety support mobile app "Anioł Stróż" built with React Native/Expo + Expo Router.
+
+**Features:**
+- Onboarding wizard (3 steps: name/date, addiction type, guardians)
+- Home dashboard: live sobriety counter (days/hours/min/sec), panic button, mood check-in, milestone badges
+- Panic screen: SOS SMS + GPS to trusted contacts, 4-7-8 breathing exercise, Polish crisis hotlines
+- AI Chat: streaming Gemini 2.5 Flash responses, conversation history in AsyncStorage, Polish recovery coach
+- Support Map: Polish hotlines (Telefon Zaufania 116 123, PARPA, etc.) + AA/NA/Al-Anon/SMART groups
+- Buddy System: sponsor contact, guardian list with call buttons, shareable invite code
+- Progress: 30-day mood heatmap, achievement badges, money saved calculator
+- Settings: edit profile, manage guardians, reset app
+
+**Tech stack:**
+- Expo SDK 54, Expo Router v6 (file-based routing)
+- AsyncStorage for local persistence (profile, guardians, moods, conversations)
+- Gemini 2.5 Flash via SSE streaming backend
+- expo-sms (SMS to guardians), expo-location (GPS), expo-haptics
+- Calming blue/green theme (#4A90D9, #7BC67E) — only panic button is red (#E53935)
+- Polish language throughout, no emojis (Ionicons vector icons only)
+
+**Navigation:**
+- `/` → index (redirect based on onboarding state)
+- `/onboarding` → 3-step wizard
+- `/(tabs)/index` → Home dashboard
+- `/(tabs)/chat` → AI chat (conversation list + individual chat)
+- `/(tabs)/map` → Support map
+- `/(tabs)/buddy` → Sponsor system
+- `/(tabs)/progress` → Progress tracking
+- `/panic` → Full-screen SOS + breathing
+- `/settings` → App settings
