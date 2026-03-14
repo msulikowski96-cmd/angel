@@ -9,8 +9,8 @@ import {
   useColorScheme,
   Platform,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
-import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -23,20 +23,20 @@ interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  createdAt: string;
 }
 
 interface ConversationMeta {
-  id: string;
+  serverId: number;
   title: string;
   preview: string;
   createdAt: string;
 }
 
 const QUICK_PROMPTS = [
-  'Mam ochotę',
-  'Jestem smutny',
+  'Mam ochotę się napić',
+  'Jestem smutny i samotny',
   'Potrzebuję motywacji',
+  'Jak przetrwać zachciankę?',
 ];
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN ?? '';
@@ -48,15 +48,17 @@ export default function ChatScreen() {
   const { profile, getSobrietyDuration } = useApp();
 
   const [conversations, setConversations] = useState<ConversationMeta[]>([]);
-  const [activeConvId, setActiveConvId] = useState<string | null>(null);
+  const [activeConv, setActiveConv] = useState<ConversationMeta | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
   const inputRef = useRef<TextInput>(null);
   const flatListRef = useRef<FlatList>(null);
 
   const topPadding = Platform.OS === 'web' ? 67 : insets.top;
+  const bottomPadding = Platform.OS === 'web' ? 34 : insets.bottom;
 
   useEffect(() => {
     loadConversations();
@@ -64,54 +66,76 @@ export default function ChatScreen() {
 
   const loadConversations = async () => {
     try {
-      const stored = await AsyncStorage.getItem('chat_conversations');
+      const stored = await AsyncStorage.getItem('chat_conversations_v2');
       if (stored) setConversations(JSON.parse(stored));
-    } catch (e) {}
+    } catch (_e) {}
   };
 
   const saveConversations = async (convs: ConversationMeta[]) => {
-    await AsyncStorage.setItem('chat_conversations', JSON.stringify(convs));
+    await AsyncStorage.setItem('chat_conversations_v2', JSON.stringify(convs));
   };
 
   const createConversation = async () => {
-    const id = Date.now().toString();
-    const conv: ConversationMeta = {
-      id,
-      title: 'Nowa rozmowa',
-      preview: '',
-      createdAt: new Date().toISOString(),
-    };
-    const newConvs = [conv, ...conversations];
-    setConversations(newConvs);
-    await saveConversations(newConvs);
-    setActiveConvId(id);
-    setMessages([]);
+    setIsCreating(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  };
-
-  const openConversation = async (id: string) => {
-    setActiveConvId(id);
     try {
-      const stored = await AsyncStorage.getItem(`chat_messages_${id}`);
-      if (stored) setMessages(JSON.parse(stored));
-      else setMessages([]);
-    } catch (e) {}
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const res = await fetch(`${API_BASE}/api/gemini/conversations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'Nowa rozmowa' }),
+      });
+      if (!res.ok) throw new Error('Failed to create conversation');
+      const data = await res.json();
+      const conv: ConversationMeta = {
+        serverId: data.id,
+        title: data.title,
+        preview: '',
+        createdAt: data.createdAt,
+      };
+      const newConvs = [conv, ...conversations];
+      setConversations(newConvs);
+      await saveConversations(newConvs);
+      setActiveConv(conv);
+      setMessages([]);
+    } catch (err) {
+      Alert.alert('Błąd', 'Nie można połączyć z serwerem AI. Sprawdź połączenie.');
+    } finally {
+      setIsCreating(false);
+    }
   };
 
-  const deleteConversation = async (id: string) => {
+  const openConversation = async (conv: ConversationMeta) => {
+    setActiveConv(conv);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      const res = await fetch(`${API_BASE}/api/gemini/conversations/${conv.serverId}`);
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setMessages(data.messages.map((m: any) => ({
+        id: String(m.id),
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      })));
+    } catch (_e) {
+      setMessages([]);
+    }
+  };
+
+  const deleteConversation = async (conv: ConversationMeta) => {
     Alert.alert('Usuń rozmowę', 'Czy na pewno chcesz usunąć tę rozmowę?', [
       { text: 'Anuluj', style: 'cancel' },
       {
         text: 'Usuń',
         style: 'destructive',
         onPress: async () => {
-          const filtered = conversations.filter(c => c.id !== id);
+          try {
+            await fetch(`${API_BASE}/api/gemini/conversations/${conv.serverId}`, { method: 'DELETE' });
+          } catch (_e) {}
+          const filtered = conversations.filter(c => c.serverId !== conv.serverId);
           setConversations(filtered);
           await saveConversations(filtered);
-          await AsyncStorage.removeItem(`chat_messages_${id}`);
-          if (activeConvId === id) {
-            setActiveConvId(null);
+          if (activeConv?.serverId === conv.serverId) {
+            setActiveConv(null);
             setMessages([]);
           }
         },
@@ -122,7 +146,7 @@ export default function ChatScreen() {
   const { days } = getSobrietyDuration();
 
   const sendMessage = async (text: string) => {
-    if (!text.trim() || isStreaming || !activeConvId) return;
+    if (!text.trim() || isStreaming || !activeConv) return;
     setInput('');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
@@ -130,7 +154,6 @@ export default function ChatScreen() {
       id: Date.now().toString(),
       role: 'user',
       content: text.trim(),
-      createdAt: new Date().toISOString(),
     };
 
     const updatedMessages = [...messages, userMsg];
@@ -138,30 +161,16 @@ export default function ChatScreen() {
     setIsStreaming(true);
     setStreamingContent('');
 
-    const systemContext = `Imię użytkownika: ${profile?.name ?? 'Użytkownik'}. Liczba dni trzeźwości: ${days}.`;
-    const messagesWithContext = [
-      { role: 'user' as const, content: systemContext },
-      { role: 'assistant' as const, content: 'Dziękuję za informacje. Jak mogę ci pomóc?' },
-      ...updatedMessages,
-    ];
-
     try {
-      const response = await fetch(`${API_BASE}/api/gemini/conversations`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: text.slice(0, 50) }),
-      });
-      const conv = await response.json();
-
-      const streamResponse = await fetch(`${API_BASE}/api/gemini/conversations/${conv.id}/messages`, {
+      const response = await fetch(`${API_BASE}/api/gemini/conversations/${activeConv.serverId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: text.trim() }),
       });
 
-      if (!streamResponse.body) throw new Error('No stream body');
+      if (!response.body) throw new Error('No stream body');
 
-      const reader = streamResponse.body.getReader();
+      const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let fullContent = '';
 
@@ -178,8 +187,11 @@ export default function ChatScreen() {
                 fullContent += data.content;
                 setStreamingContent(fullContent);
               }
-              if (data.done) break;
-            } catch (e) {}
+              if (data.error) {
+                fullContent = data.error;
+                setStreamingContent(fullContent);
+              }
+            } catch (_e) {}
           }
         }
       }
@@ -188,27 +200,28 @@ export default function ChatScreen() {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: fullContent,
-        createdAt: new Date().toISOString(),
       };
 
       const finalMessages = [...updatedMessages, assistantMsg];
       setMessages(finalMessages);
-      await AsyncStorage.setItem(`chat_messages_${activeConvId}`, JSON.stringify(finalMessages));
 
+      // Update conversation meta
+      const preview = fullContent.slice(0, 80);
+      const newTitle = text.slice(0, 40);
       const updatedConvs = conversations.map(c =>
-        c.id === activeConvId
-          ? { ...c, preview: fullContent.slice(0, 60) + '...', title: text.slice(0, 40) }
+        c.serverId === activeConv.serverId
+          ? { ...c, preview, title: newTitle }
           : c
       );
       setConversations(updatedConvs);
       await saveConversations(updatedConvs);
+      setActiveConv(prev => prev ? { ...prev, preview, title: newTitle } : prev);
 
-    } catch (err) {
+    } catch (_err) {
       const errorMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'Przepraszam, wystąpił błąd. Spróbuj ponownie.',
-        createdAt: new Date().toISOString(),
+        content: 'Przepraszam, wystąpił problem z połączeniem. Sprawdź internet i spróbuj ponownie.',
       };
       setMessages(prev => [...prev, errorMsg]);
     } finally {
@@ -217,7 +230,8 @@ export default function ChatScreen() {
     }
   };
 
-  if (!activeConvId) {
+  // --- CONVERSATION LIST VIEW ---
+  if (!activeConv) {
     return (
       <View style={[styles.container, { backgroundColor: C.background }]}>
         <View style={[styles.header, { paddingTop: topPadding + 16, borderBottomColor: C.border }]}>
@@ -227,42 +241,53 @@ export default function ChatScreen() {
           <Pressable
             style={[styles.newBtn, { backgroundColor: C.blue }]}
             onPress={createConversation}
+            disabled={isCreating}
           >
-            <Ionicons name="add" size={22} color="#fff" />
+            {isCreating
+              ? <ActivityIndicator color="#fff" size="small" />
+              : <Ionicons name="add" size={22} color="#fff" />
+            }
           </Pressable>
         </View>
 
         {conversations.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <Ionicons name="chatbubbles-outline" size={64} color={C.textTertiary} />
+            <View style={[styles.emptyIcon, { backgroundColor: C.blue + '15' }]}>
+              <Ionicons name="shield-checkmark" size={52} color={C.blue} />
+            </View>
             <Text style={[styles.emptyTitle, { color: C.text, fontFamily: 'Inter_700Bold' }]}>
-              Brak rozmów
+              Anioł Stróż AI
             </Text>
             <Text style={[styles.emptyText, { color: C.textSecondary, fontFamily: 'Inter_400Regular' }]}>
-              Zacznij rozmowę ze swoim Aniołem Stróżem AI. Jestem tutaj, aby ci pomóc.
+              Jestem tu, żeby Ci pomóc. Możemy porozmawiać o Twoich zachciankach, emocjach lub po prostu jak sobie radzisz.
             </Text>
             <Pressable
               style={[styles.startBtn, { backgroundColor: C.blue }]}
               onPress={createConversation}
+              disabled={isCreating}
             >
-              <Text style={[styles.startBtnText, { fontFamily: 'Inter_600SemiBold' }]}>
-                Zacznij rozmowę
-              </Text>
+              {isCreating
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <Text style={[styles.startBtnText, { fontFamily: 'Inter_600SemiBold' }]}>Zacznij rozmowę</Text>
+              }
             </Pressable>
           </View>
         ) : (
           <FlatList
             data={conversations}
-            keyExtractor={item => item.id}
-            contentContainerStyle={{ paddingTop: 8, paddingBottom: insets.bottom + 100 }}
+            keyExtractor={item => String(item.serverId)}
+            contentContainerStyle={{ paddingVertical: 8, paddingBottom: bottomPadding + 100 }}
             renderItem={({ item }) => (
               <Pressable
-                style={[styles.convRow, { borderBottomColor: C.border }]}
-                onPress={() => openConversation(item.id)}
-                onLongPress={() => deleteConversation(item.id)}
+                style={({ pressed }) => [
+                  styles.convRow,
+                  { borderBottomColor: C.border, opacity: pressed ? 0.7 : 1 }
+                ]}
+                onPress={() => openConversation(item)}
+                onLongPress={() => deleteConversation(item)}
               >
                 <View style={[styles.convIcon, { backgroundColor: C.blue + '15' }]}>
-                  <Ionicons name="chatbubble" size={22} color={C.blue} />
+                  <Ionicons name="chatbubble-ellipses" size={22} color={C.blue} />
                 </View>
                 <View style={styles.convInfo}>
                   <Text style={[styles.convTitle, { color: C.text, fontFamily: 'Inter_600SemiBold' }]} numberOfLines={1}>
@@ -283,30 +308,30 @@ export default function ChatScreen() {
     );
   }
 
-  const allMessages = isStreaming && streamingContent
-    ? [...messages, { id: 'streaming', role: 'assistant' as const, content: streamingContent, createdAt: '' }]
+  // --- ACTIVE CHAT VIEW ---
+  const displayMessages: Message[] = isStreaming && streamingContent
+    ? [...messages, { id: 'streaming', role: 'assistant', content: streamingContent }]
     : messages;
 
   return (
     <View style={[styles.container, { backgroundColor: C.background }]}>
       <View style={[styles.chatHeader, { paddingTop: topPadding + 8, borderBottomColor: C.border }]}>
-        <Pressable onPress={() => setActiveConvId(null)} style={styles.backBtn} hitSlop={10}>
+        <Pressable onPress={() => { setActiveConv(null); setMessages([]); }} style={styles.backBtn} hitSlop={10}>
           <Ionicons name="arrow-back" size={24} color={C.text} />
         </Pressable>
-        <Text style={[styles.chatHeaderTitle, { color: C.text, fontFamily: 'Inter_700Bold' }]}>
-          Anioł Stróż AI
-        </Text>
+        <View style={styles.chatHeaderCenter}>
+          <View style={[styles.aiDot, { backgroundColor: C.green }]} />
+          <Text style={[styles.chatHeaderTitle, { color: C.text, fontFamily: 'Inter_700Bold' }]}>
+            Anioł Stróż AI
+          </Text>
+        </View>
         <View style={{ width: 44 }} />
       </View>
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior="padding"
-        keyboardVerticalOffset={0}
-      >
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" keyboardVerticalOffset={0}>
         <FlatList
           ref={flatListRef}
-          data={allMessages}
+          data={displayMessages}
           inverted
           keyExtractor={item => item.id}
           contentContainerStyle={{
@@ -318,20 +343,22 @@ export default function ChatScreen() {
           keyboardDismissMode="interactive"
           keyboardShouldPersistTaps="handled"
           ListHeaderComponent={
-            messages.length === 0 && !isStreaming ? (
+            displayMessages.length === 0 && !isStreaming ? (
               <View style={styles.introBox}>
-                <Ionicons name="shield-checkmark" size={40} color={C.blue} />
+                <View style={[styles.introAvatar, { backgroundColor: C.blue }]}>
+                  <Ionicons name="shield-checkmark" size={32} color="#fff" />
+                </View>
                 <Text style={[styles.introTitle, { color: C.text, fontFamily: 'Inter_700Bold' }]}>
                   Cześć, {profile?.name ?? 'Wojowniku'}
                 </Text>
                 <Text style={[styles.introText, { color: C.textSecondary, fontFamily: 'Inter_400Regular' }]}>
-                  Masz już {days} dni trzeźwości. To wielka siła. Jak mogę ci dziś pomóc?
+                  Masz już {days} {days === 1 ? 'dzień' : days < 5 ? 'dni' : 'dni'} trzeźwości. To jest Twoja siła. Jak mogę Ci dziś pomóc?
                 </Text>
                 <View style={styles.quickPromptsRow}>
                   {QUICK_PROMPTS.map(p => (
                     <Pressable
                       key={p}
-                      style={[styles.quickPrompt, { backgroundColor: C.blue + '15', borderColor: C.blue + '30' }]}
+                      style={[styles.quickPrompt, { backgroundColor: C.blue + '12', borderColor: C.blue + '30' }]}
                       onPress={() => sendMessage(p)}
                     >
                       <Text style={[styles.quickPromptText, { color: C.blue, fontFamily: 'Inter_500Medium' }]}>
@@ -356,8 +383,8 @@ export default function ChatScreen() {
               <View style={[
                 styles.messageBubble,
                 item.role === 'user'
-                  ? { backgroundColor: C.blue, marginLeft: 48 }
-                  : { backgroundColor: C.surface, borderColor: C.border, borderWidth: 1, marginRight: 48 }
+                  ? { backgroundColor: C.blue, marginLeft: 52 }
+                  : { backgroundColor: C.surface, borderColor: C.border, borderWidth: 1, marginRight: 52 }
               ]}>
                 <Text style={[
                   styles.messageText,
@@ -367,6 +394,9 @@ export default function ChatScreen() {
                   }
                 ]}>
                   {item.content}
+                  {item.id === 'streaming' && (
+                    <Text style={{ color: C.blue }}>▌</Text>
+                  )}
                 </Text>
               </View>
             </View>
@@ -378,30 +408,15 @@ export default function ChatScreen() {
           {
             backgroundColor: C.surface,
             borderTopColor: C.border,
-            paddingBottom: insets.bottom + 8,
+            paddingBottom: bottomPadding + 8,
           }
         ]}>
-          {!isStreaming && messages.length === 0 && (
-            <View style={styles.quickPromptsInline}>
-              {QUICK_PROMPTS.map(p => (
-                <Pressable
-                  key={p}
-                  style={[styles.quickPromptInline, { backgroundColor: C.blue + '15' }]}
-                  onPress={() => sendMessage(p)}
-                >
-                  <Text style={[styles.quickPromptInlineText, { color: C.blue, fontFamily: 'Inter_500Medium' }]}>
-                    {p}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          )}
           <View style={styles.inputContainer}>
             <TextInput
               ref={inputRef}
               style={[styles.chatInput, {
                 backgroundColor: C.background,
-                borderColor: C.border,
+                borderColor: input.trim() ? C.blue : C.border,
                 color: C.text,
                 fontFamily: 'Inter_400Regular',
               }]}
@@ -416,16 +431,15 @@ export default function ChatScreen() {
             <Pressable
               style={[
                 styles.sendBtn,
-                { backgroundColor: input.trim() && !isStreaming ? C.blue : C.border }
+                {
+                  backgroundColor: input.trim() && !isStreaming ? C.blue : C.border,
+                }
               ]}
-              onPress={() => {
-                sendMessage(input);
-                inputRef.current?.focus();
-              }}
+              onPress={() => sendMessage(input)}
               disabled={!input.trim() || isStreaming}
             >
               {isStreaming ? (
-                <Ionicons name="ellipsis-horizontal" size={20} color="#fff" />
+                <ActivityIndicator color="#fff" size="small" />
               ) : (
                 <Ionicons name="send" size={18} color="#fff" />
               )}
@@ -455,10 +469,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40, gap: 16 },
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
+    gap: 16,
+  },
+  emptyIcon: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
   emptyTitle: { fontSize: 22 },
   emptyText: { fontSize: 16, textAlign: 'center', lineHeight: 24 },
-  startBtn: { paddingHorizontal: 28, paddingVertical: 14, borderRadius: 50, marginTop: 8 },
+  startBtn: {
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 50,
+    marginTop: 8,
+    minWidth: 200,
+    alignItems: 'center',
+  },
   startBtnText: { color: '#fff', fontSize: 16 },
   convRow: {
     flexDirection: 'row',
@@ -480,28 +515,52 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   backBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  chatHeaderTitle: { flex: 1, textAlign: 'center', fontSize: 17 },
-  introBox: { alignItems: 'center', gap: 14, paddingVertical: 24, paddingHorizontal: 16 },
-  introTitle: { fontSize: 20 },
+  chatHeaderCenter: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  aiDot: { width: 8, height: 8, borderRadius: 4 },
+  chatHeaderTitle: { fontSize: 17 },
+  introBox: {
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 32,
+    paddingHorizontal: 16,
+  },
+  introAvatar: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  introTitle: { fontSize: 22 },
   introText: { fontSize: 15, textAlign: 'center', lineHeight: 22 },
-  quickPromptsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
+  quickPromptsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center', marginTop: 8 },
   quickPrompt: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderRadius: 50,
-    borderWidth: 1,
+    borderWidth: 1.5,
   },
   quickPromptText: { fontSize: 14 },
   messageRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
   userMessageRow: { justifyContent: 'flex-end' },
   aiMessageRow: { justifyContent: 'flex-start' },
-  aiAvatar: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
-  messageBubble: { maxWidth: '80%', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 },
+  aiAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+    flexShrink: 0,
+  },
+  messageBubble: { maxWidth: '82%', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 12 },
   messageText: { fontSize: 15, lineHeight: 22 },
-  inputRow: { paddingHorizontal: 12, paddingTop: 12, borderTopWidth: 1 },
-  quickPromptsInline: { flexDirection: 'row', gap: 8, marginBottom: 10, flexWrap: 'wrap' },
-  quickPromptInline: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 50 },
-  quickPromptInlineText: { fontSize: 13 },
+  inputRow: {
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+  },
   inputContainer: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
   chatInput: {
     flex: 1,
