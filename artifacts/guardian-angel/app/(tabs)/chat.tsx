@@ -39,7 +39,9 @@ const QUICK_PROMPTS = [
   'Jak przetrwać zachciankę?',
 ];
 
-const API_BASE = process.env.EXPO_PUBLIC_DOMAIN ?? '';
+const API_BASE = process.env.EXPO_PUBLIC_DOMAIN 
+  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
+  : 'http://localhost:8080';
 
 export default function ChatScreen() {
   const scheme = useColorScheme();

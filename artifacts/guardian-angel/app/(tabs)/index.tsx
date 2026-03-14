@@ -113,7 +113,10 @@ export default function HomeScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     try {
-      await fetch(`${process.env.EXPO_PUBLIC_DOMAIN ?? ''}/api/mood`, {
+      const apiBase = process.env.EXPO_PUBLIC_DOMAIN 
+        ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
+        : 'http://localhost:8080';
+      await fetch(`${apiBase}/api/mood`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: 1, moodScore: score }),
