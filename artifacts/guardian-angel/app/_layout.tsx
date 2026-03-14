@@ -28,6 +28,8 @@ function RootLayoutNav() {
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="panic" options={{ headerShown: false, animation: "slide_from_bottom" }} />
       <Stack.Screen name="chat/[id]" options={{ headerShown: false, animation: "slide_from_right" }} />
+      <Stack.Screen name="settings" options={{ headerShown: false, animation: "slide_from_right" }} />
+      <Stack.Screen name="privacy" options={{ headerShown: false, animation: "slide_from_right" }} />
     </Stack>
   );
 }
