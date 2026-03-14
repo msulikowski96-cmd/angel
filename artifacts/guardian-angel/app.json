@@ -1,24 +1,53 @@
 {
   "expo": {
-    "name": "Guardian Angel",
-    "slug": "guardian-angel",
+    "name": "Anioł Stróż",
+    "slug": "aniol-stroz",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "guardian-angel",
+    "scheme": "aniolstroz",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "image": "./assets/images/splash-bg.png",
+      "resizeMode": "cover",
+      "backgroundColor": "#0A1628"
     },
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "bundleIdentifier": "pl.aniolstroz.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Anioł Stróż potrzebuje dostępu do Twojej lokalizacji, aby wysłać ją do Twoich Aniołów Stróżów podczas sytuacji kryzysowej.",
+        "NSLocationAlwaysUsageDescription": "Anioł Stróż potrzebuje dostępu do Twojej lokalizacji, aby wysłać ją do Twoich Aniołów Stróżów podczas sytuacji kryzysowej."
+      }
     },
-    "android": {},
+    "android": {
+      "package": "pl.aniolstroz.app",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#0A1628"
+      },
+      "permissions": [
+        "android.permission.SEND_SMS",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.VIBRATE",
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE"
+      ],
+      "softwareKeyboardLayoutMode": "pan",
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.READ_CONTACTS",
+        "android.permission.WRITE_CONTACTS"
+      ]
+    },
     "web": {
-      "favicon": "./assets/images/icon.png"
+      "favicon": "./assets/images/icon.png",
+      "bundler": "metro"
     },
     "plugins": [
       [
@@ -28,7 +57,15 @@
         }
       ],
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Anioł Stróż potrzebuje dostępu do Twojej lokalizacji, aby wysłać ją do Twoich Aniołów Stróżów podczas sytuacji kryzysowej.",
+          "locationWhenInUsePermission": "Anioł Stróż potrzebuje dostępu do Twojej lokalizacji, aby wysłać ją do Twoich Aniołów Stróżów podczas sytuacji kryzysowej.",
+          "isIosBackgroundLocationEnabled": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
